@@ -2,9 +2,10 @@ from flask import Flask, render_template_string, request, jsonify, session
 import time
 
 app = Flask(__name__)
+# Unique secret key to manage isolated candidate player sessions cleanly
 app.secret_key = "itt440_ultimate_hangman_session_key_admin_v7"
 
-# 🎯 Official Tournament Word Pool (In English)
+# 🎯 Official Tournament Word Pool (In English with English Hints)
 words_pool = [
     {"word": "CHALLENGE", "hint": "A task or situation that tests someone's abilities."},
     {"word": "JOURNEY", "hint": "An act of traveling from one place to another."},
@@ -13,14 +14,13 @@ words_pool = [
     {"word": "VICTORY", "hint": "An act of defeating an enemy or opponent."}
 ]
 
-# Shared Global State for Admin Tracking
-# Stores player statistics and active online presence records
+# Shared Global State for Central Administrator Tracking
 active_players = {}
 
 def update_admin_tracker():
     """Cleans up inactive sessions and keeps active player data fresh"""
     now = time.time()
-    # If a player hasn't updated in 8 seconds, they are considered disconnected
+    # If a player hasn't sent an update in 8 seconds, they are considered disconnected
     to_delete = [uid for uid, p in active_players.items() if now - p["last_seen"] > 8]
     for uid in to_delete:
         del active_players[uid]
@@ -114,7 +114,7 @@ HTML_TEMPLATE = """
             }, 100);
         }
 
-        // Tightly optimized polling rate to stay lag-free while giving live state sync
+        // Optimized state synchronization polling for lag-free rendering
         setInterval(async () => {
             if(!playing || fetchLock) return;
             try {
@@ -189,7 +189,7 @@ HTML_TEMPLATE = """
 
     <div id="auth-view" class="auth-box">
         <h2 style="color: #FF007F; margin-top: 0; font-size: 1.6rem;">🎯 ITT440 HANGBOY TOURNAMENT</h2>
-        <p style="font-size: 0.95rem; color: #A4A4C1;">Supports 4-5 players playing simultaneously from different devices with Live Admin Leaderboard Monitoring!</p>
+        <p style="font-size: 0.95rem; color: #A4A4C1;">Supports multiple players playing simultaneously with Live Admin Monitoring Dashboard!</p>
         <input type="text" id="name-in" class="letter-in" style="width: 85%; font-size: 1.3rem;" placeholder="NICKNAME" maxlength="12" onkeydown="if(event.key==='Enter') joinLobby()">
         <br>
         <button class="btn btn-join" onclick="joinLobby()">START TOURNAMENT</button>
@@ -309,14 +309,13 @@ ADMIN_TEMPLATE = """
 <body>
     <div class="container">
         <h1 style="color: #00F5D4; margin-bottom: 5px;">🚨 ITT440 TOURNAMENT LIVE CENTRAL</h1>
-        <p style="color: #A4A4C1; margin-top: 0;">Real-time administrator monitor station. Tracks every single candidate instantaneously.</p>
+        <p style="color: #A4A4C1; margin-top: 0;">Real-time administrator monitor station. Tracks every candidate instantaneously.</p>
         
         <div class="grid">
             <div class="box">
                 <h3 style="margin-top:0; color:#00F5D4;">👥 ONLINE CANDIDATES IN-GAME</h3>
                 <table id="active-table"></table>
             </div>
-            
             <div class="box leaderboard">
                 <h3 style="margin-top:0; color:#FF007F;">🏆 LIVE TOURNAMENT LEADERBOARD</h3>
                 <table id="score-table"></table>
@@ -340,7 +339,6 @@ def admin_data_api():
     update_admin_tracker()
     player_list = []
     for uid, p in active_players.items():
-        # Live calculate running time for online active players
         curr_time = p["elapsed_time"] if p["is_game_over"] else (time.time() - p["start_time"])
         status_str = "Playing"
         if p["is_game_over"]:
@@ -354,7 +352,6 @@ def admin_data_api():
             "status": status_str
         })
         
-    # Build complete active real-time leaderboard ranking
     leaderboard_list = []
     for uid, p in active_players.items():
         curr_time = p["elapsed_time"] if p["is_game_over"] else (time.time() - p["start_time"])
@@ -369,7 +366,7 @@ def admin_data_api():
             "success": (p["is_game_over"] and "_" not in p["revealed_word"])
         })
     
-    # Sort leaderboard live: Winners first, then active players, prioritized by lowest time
+    # Sort rule: Winners first (Rank 1), then Active Players, sorted by lowest time taken
     sorted_leaderboard = sorted(leaderboard_list, key=lambda x: (-int(x["status"] == "Won"), int(x["status"] == "Playing"), x["time"]))
 
     return jsonify({
@@ -385,7 +382,7 @@ def start_game():
         return jsonify({"status": "error"})
         
     session["username"] = username
-    session["player_id"] = username + "_" + str(int(time.time())) # Unique signature
+    session["player_id"] = username + "_" + str(int(time.time()))
     session["current_level"] = 0
     session["secret_word"] = words_pool[0]["word"]
     session["hint"] = words_pool[0]["hint"]
@@ -396,7 +393,6 @@ def start_game():
     session["elapsed_time"] = 0.0
     session["logs"] = [f"📡 Player '{username}' joined the tournament! Level 1 started."]
     
-    # Inject record directly into global live admin dictionary tracking pool
     active_players[session["player_id"]] = {
         "username": username,
         "current_level": 0,
@@ -418,12 +414,10 @@ def update_state():
     if not session.get("is_game_over", False):
         session["elapsed_time"] = time.time() - session["start_time"]
     
-    # Keep heartbeat reporting tick fresh for the active admin panel
     if pid in active_players:
         active_players[pid]["elapsed_time"] = session["elapsed_time"]
         active_players[pid]["last_seen"] = time.time()
         
-    # Re-fetch ranked list for player view overlay
     leaderboard_list = []
     for uid, p in active_players.items():
         curr_time = p["elapsed_time"] if p["is_game_over"] else (time.time() - p["start_time"])
@@ -471,7 +465,6 @@ def guess_letter():
     
     session["revealed_word"] = revealed
     
-    # Keep global live tracker perfectly mirrors local session modifications
     if pid in active_players:
         active_players[pid]["revealed_word"] = revealed
         active_players[pid]["lives"] = session["lives"]
