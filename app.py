@@ -1,13 +1,44 @@
 from flask import Flask, render_template_string, jsonify, request, session
 import socket
 import time
-from network_utils import send_msg, recv_msg
+
+# Fungsi helper pembungkusan mesej mengikut protokol tugasan anda
+def send_msg(sock, msg):
+    try:
+        encoded_msg = msg.encode('utf-8')
+        msg_len = len(encoded_msg)
+        # Menghantar header 4-byte panjang mesej diikuti oleh kandungan mesej
+        sock.sendall(msg_len.to_bytes(4, byteorder='big') + encoded_msg)
+    except Exception:
+        pass
+
+def recv_msg(sock):
+    try:
+        # Membaca header 4-byte untuk mengetahui panjang mesej sebenar
+        raw_msglen = sock.recv(4)
+        if not raw_msglen:
+            return None
+        msglen = int.from_bytes(raw_msglen, byteorder='big')
+        
+        # Mengambil keseluruhan kandungan mesej berdasarkan panjang yang dibaca
+        chunks = []
+        bytes_recd = 0
+        while bytes_recd < msglen:
+            chunk = sock.recv(min(msglen - bytes_recd, 2048))
+            if chunk == b'':
+                break
+            chunks.append(chunk)
+            bytes_recd += len(chunk)
+        return b''.join(chunks).decode('utf-8')
+    except Exception:
+        return None
 
 app = Flask(__name__)
-app.secret_key = "ITT440_SUPER_SECRET_KEY"
+# Menggunakan session secret key baharu seperti dalam repo GitHub anda (image_cd1325.png)
+app.secret_key = "itt440_ultimate_hangman_session_key_admin_v1"
 
-# 🎯 Official Tournament Match Progression Pools (Wajib Ada untuk Selesaikan Ralat Pylance)
-words_pool = [
+# 🎯 TOURNAMENT MASTER WORD POOL (Struktur data rasmi tugasan anda)
+master_words_pool = [
     {"word": "CHALLENGE", "hint": "A task or situation that tests someone's abilities."},
     {"word": "JOURNEY", "hint": "An act of traveling from one place to another."},
     {"word": "HORIZON", "hint": "The line at which the earth's surface and the sky appear to meet."},
@@ -25,10 +56,10 @@ words_pool = [
     {"word": "SATELLITE", "hint": "An artificial body placed in orbit round the earth or another planet."}
 ]
 
-# Database utama untuk menyimpan markah dan status pemain (Lokal / Session)
+# Shared Global State untuk penjejakan Central Administrator
 active_players = {}
 
-# ----------------- INTERFACE ADMIN (ADMIN PANEL) -----------------
+# ----------------- INTERFACE ADMIN (ADMIN PANEL GRAPHICS) -----------------
 ADMIN_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -90,7 +121,7 @@ ADMIN_TEMPLATE = """
                 }
             }
         }
-        setInterval(refreshAdminDashboard, 1500);
+        setInterval(refreshAdminDashboard, 1500); // Polling automatik setiap 1.5 saat
     </script>
 </head>
 <body>
@@ -123,25 +154,22 @@ ADMIN_TEMPLATE = """
 def admin_dashboard():
     return render_template_string(ADMIN_TEMPLATE)
 
-# ----------------- FUNGSI UTAMA UNTUK RESET SCOREBOARD -----------------
+# ----------------- LOGIK RESET PENTADBIRAN -----------------
 @app.route('/admin/reset', methods=['POST'])
 def reset_scoreboard():
-    """Mengosongkan pangkalan data memori untuk memulakan pusingan kejohanan baharu."""
     global active_players
-    active_players.clear() # Kosongkan dict utama local web session jika ada
-
+    active_players.clear()
     try:
-        # Menghantar arahan RESET ke backend socket (server.py) jika ia sedang berjalan
         temp_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        temp_sock.connect(('192.168.50.10', 8080))
+        # Menghubungkan ke server lokal/VM untuk membersihkan state server soket
+        temp_sock.connect(('192.168.50.10', 8080))  # Tukar ke 127.0.0.1 jika buat ujian lokal 1 laptop
         send_msg(temp_sock, "RESET_SCORES")
         temp_sock.close()
     except Exception:
-        pass # Abaikan ralat jika socket server ditutup sewaktu pembangunan lokal
-
+        pass
     return jsonify({"status": "success", "message": "Leaderboard flushed successfully"})
 
-# ----------------- LOGIK PEMBENTANgAN / DATA SYNC -----------------
+# ----------------- LOGIK PEMBENTANGAN / DATA SYNC KLIEN -----------------
 @app.route('/guess_letter', methods=['POST'])
 def guess_letter():
     req = request.get_json() or {}
@@ -152,11 +180,9 @@ def guess_letter():
     revealed = session.get("revealed_word", [])
 
     if char in secret:
-        hit = False
         for i, l in enumerate(secret):
             if l == char and revealed[i] == "_":
                 revealed[i] = char
-                hit = True
     else:
         session["lives"] = session.get("lives", 6) - 1
 
@@ -166,7 +192,7 @@ def guess_letter():
         active_players[pid]["lives"] = session["lives"]
 
     if "_" not in revealed:
-        if session.get("current_level", 0) + 1 >= len(words_pool):
+        if session.get("current_level", 0) + 1 >= len(master_words_pool):
             session["is_game_over"] = True
             if pid in active_players:
                 active_players[pid]["is_game_over"] = True
@@ -175,10 +201,10 @@ def guess_letter():
 
 @app.route('/admin/data')
 def get_admin_data():
-    """Mengambil data dinamik dari rangkaian soket pusat untuk dipaparkan pada Web."""
     try:
         temp_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        temp_sock.connect(('192.168.50.10', 8080)) # Ubah ke '127.0.0.1' jika test 1 komputer
+        temp_sock.settimeout(0.5) # Cegah web freeze jika server offline
+        temp_sock.connect(('192.168.50.10', 8080))  # Tukar ke 127.0.0.1 jika buat ujian lokal 1 laptop
         send_msg(temp_sock, "JOIN:WEB_ADMIN_MONITOR")
         payload = recv_msg(temp_sock)
         temp_sock.close()
@@ -199,7 +225,6 @@ def get_admin_data():
             for r in rows:
                 tokens_row = r.split(",")
                 if len(tokens_row) == 8:
-                    # Tukar data mengikut format paparan pada image_7b4867.png
                     leaderboard_data.append({
                         "rank": tokens_row[0], 
                         "name": tokens_row[1],
@@ -216,10 +241,11 @@ def get_admin_data():
             "leaderboard": leaderboard_data
         })
     except Exception:
-        # Jika pelayan soket offline, paparkan simulasi data kosong yang bersih
+        # Menampilkan paparan bersedia sekiranya server soket belum dihidupkan
         return jsonify({
-            "word": "STANDBY", "hint": "Waiting for server.py...", "lives": 6, "level": 1, "gameover": "NO", "leaderboard": []
+            "word": "STANDBY", "hint": "Waiting for server.py network link...", "lives": 6, "level": 1, "gameover": "NO", "leaderboard": []
         })
 
 if __name__ == '__main__':
+    # Ditetapkan ke port 5000 agar serasi dengan konfigurasi hibrid asal anda
     app.run(host='0.0.0.0', port=5000, debug=True)
