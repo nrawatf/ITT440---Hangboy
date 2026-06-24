@@ -2,10 +2,9 @@ from flask import Flask, render_template_string, request, jsonify, session
 import time
 
 app = Flask(__name__)
-# Secret key to manage unique secret sessions for each individual player cleanly
-app.secret_key = "itt440_ultimate_hangman_session_key_countup_eng_v6"
+app.secret_key = "itt440_ultimate_hangman_session_key_admin_v7"
 
-# 🎯 Official Tournament Word Pool (In English with English Hints)
+# 🎯 Official Tournament Word Pool (In English)
 words_pool = [
     {"word": "CHALLENGE", "hint": "A task or situation that tests someone's abilities."},
     {"word": "JOURNEY", "hint": "An act of traveling from one place to another."},
@@ -14,21 +13,17 @@ words_pool = [
     {"word": "VICTORY", "hint": "An act of defeating an enemy or opponent."}
 ]
 
-def init_player_game(username):
-    """Initializes a completely separate and isolated game state for each player"""
-    session["username"] = username
-    session["current_level"] = 0
-    session["secret_word"] = words_pool[0]["word"]
-    session["hint"] = words_pool[0]["hint"]
-    session["revealed_word"] = ["_" for _ in words_pool[0]["word"]]
-    session["lives"] = 6
-    session["is_game_over"] = False
-    session["start_time"] = time.time()
-    session["elapsed_time"] = 0.0
-    session["logs"] = [f"📡 Player '{username}' joined the tournament! Level 1 started."]
+# Shared Global State for Admin Tracking
+# Stores player statistics and active online presence records
+active_players = {}
 
-# Shared Global Leaderboard (Only records data when a player finishes/loses)
-global_leaderboard = []
+def update_admin_tracker():
+    """Cleans up inactive sessions and keeps active player data fresh"""
+    now = time.time()
+    # If a player hasn't updated in 8 seconds, they are considered disconnected
+    to_delete = [uid for uid, p in active_players.items() if now - p["last_seen"] > 8]
+    for uid in to_delete:
+        del active_players[uid]
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -103,14 +98,12 @@ HTML_TEMPLATE = """
                 document.getElementById('p-name').innerText = "👤 Player: " + name;
                 document.getElementById('letter-box').focus();
                 
-                // Initialize highly realistic localized live ticking clock
                 clientStartTime = Date.now();
                 clientBaseElapsed = 0;
                 startLocalTimer();
             }
         }
 
-        // Real-time ticking engine at 100ms interval for extremely smooth and realistic stopwatch count-up
         function startLocalTimer() {
             if(localTimerInterval) clearInterval(localTimerInterval);
             localTimerInterval = setInterval(() => {
@@ -121,7 +114,7 @@ HTML_TEMPLATE = """
             }, 100);
         }
 
-        // Separated slow backend state synchronization polling to fully eliminate interface input lag
+        // Tightly optimized polling rate to stay lag-free while giving live state sync
         setInterval(async () => {
             if(!playing || fetchLock) return;
             try {
@@ -134,7 +127,6 @@ HTML_TEMPLATE = """
                 document.getElementById('lvl-space').innerText = "Level: " + (data.current_level + 1) + "/5";
                 document.getElementById('lives-space').innerText = "❤️ Lives: " + data.lives + "/6";
                 
-                // Keep client side stopwatch sync anchored tightly to backend realities
                 clientBaseElapsed = data.elapsed_time;
                 clientStartTime = Date.now();
                 
@@ -157,7 +149,7 @@ HTML_TEMPLATE = """
                     
                     let rows = `<tr><th>Rank</th><th>Player</th><th>Status</th><th>Total Time Taken</th></tr>`;
                     data.leaderboard.forEach((p, idx) => {
-                        rows += `<tr><td>#${idx+1}</td><td>${p.name}</td><td>${p.success ? '🏁 Won' : '💀 Lost'}</td><td><strong>${p.elapsed_time.toFixed(2)}s</strong></td></tr>`;
+                        rows += `<tr><td>#${idx+1}</td><td>${p.name}</td><td>${p.status}</td><td><strong>${p.time.toFixed(1)}s</strong></td></tr>`;
                     });
                     document.getElementById('table-body').innerHTML = rows;
                     document.getElementById('end-overlay').style.display = 'flex';
@@ -170,7 +162,7 @@ HTML_TEMPLATE = """
             let val = box.value.trim().toUpperCase();
             box.value = ""; box.focus();
             if(val.length === 1 && /[A-Z]/.test(val)) {
-                fetchLock = true; // Lock poll channel to force instantaneous reactive user rendering
+                fetchLock = true;
                 let res = await fetch('/guess_letter', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
@@ -197,7 +189,7 @@ HTML_TEMPLATE = """
 
     <div id="auth-view" class="auth-box">
         <h2 style="color: #FF007F; margin-top: 0; font-size: 1.6rem;">🎯 ITT440 HANGBOY TOURNAMENT</h2>
-        <p style="font-size: 0.95rem; color: #A4A4C1;">Isolated multi-player sandbox engine. Supports 4-5 players playing simultaneously from different devices independently!</p>
+        <p style="font-size: 0.95rem; color: #A4A4C1;">Supports 4-5 players playing simultaneously from different devices with Live Admin Leaderboard Monitoring!</p>
         <input type="text" id="name-in" class="letter-in" style="width: 85%; font-size: 1.3rem;" placeholder="NICKNAME" maxlength="12" onkeydown="if(event.key==='Enter') joinLobby()">
         <br>
         <button class="btn btn-join" onclick="joinLobby()">START TOURNAMENT</button>
@@ -251,9 +243,139 @@ HTML_TEMPLATE = """
 </html>
 """
 
+ADMIN_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>🚨 TOURNAMENT LIVE ADMIN PANEL</title>
+    <style>
+        body { background-color: #0D0E15; color: #F8F8F2; font-family: 'Segoe UI', Arial, sans-serif; padding: 25px; text-align: center; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        .grid { display: flex; gap: 20px; margin-top: 25px; justify-content: center; flex-wrap: wrap; }
+        .box { background: #1E1E2E; border: 2px solid #00F5D4; padding: 20px; border-radius: 8px; flex: 1; min-width: 300px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        .box.leaderboard { border-color: #FF007F; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { padding: 12px; border: 1px solid #252538; text-align: center; background: #11111B; }
+        th { background: #252538; color: #FFFF00; font-weight: bold; }
+        .badge { padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85rem; }
+        .badge.playing { background: #00F5D4; color: #1E1E2E; }
+        .badge.won { background: #FF007F; color: white; }
+        .badge.lost { background: #FF477E; color: white; }
+    </style>
+    <script>
+        // Automatic Real-Time Live Admin Scoreboard updates every 1 second
+        setInterval(async () => {
+            try {
+                let res = await fetch('/admin/data');
+                let data = await res.json();
+                
+                // 1. Update Active Players list
+                let activeRows = `<tr><th>Player Name</th><th>Current Level</th><th>Lives Left</th><th>Live Timer</th><th>Status</th></tr>`;
+                if(data.players.length === 0) {
+                    activeRows += `<tr><td colspan="5" style="color:#A4A4C1;">No active players online right now.</td></tr>`;
+                } else {
+                    data.players.forEach(p => {
+                        activeRows += `<tr>
+                            <td style="color:#00E5FF; font-weight:bold;">${p.name}</td>
+                            <td>Level ${p.level + 1}/5</td>
+                            <td style="color:#FF477E; font-weight:bold;">❤️ ${p.lives}/6</td>
+                            <td style="color:#FFFF00;"><strong>${p.time.toFixed(1)}s</strong></td>
+                            <td><span class="badge ${p.status.toLowerCase()}">${p.status}</span></td>
+                        </tr>`;
+                    });
+                }
+                document.getElementById('active-table').innerHTML = activeRows;
+
+                // 2. Update Live Ranked Scoreboard
+                let scoreRows = `<tr><th>Rank</th><th>Player Name</th><th>Final Status</th><th>Final Time Record</th></tr>`;
+                if(data.leaderboard.length === 0) {
+                    scoreRows += `<tr><td colspan="4" style="color:#A4A4C1;">No submissions yet. Game in progress!</td></tr>`;
+                } else {
+                    data.leaderboard.forEach((l, idx) => {
+                        scoreRows += `<tr>
+                            <td>#${idx+1}</td>
+                            <td style="font-weight:bold;">${l.name}</td>
+                            <td><span class="badge ${l.status.toLowerCase()}">${l.status}</span></td>
+                            <td style="color:#00F5D4;"><strong>${l.time.toFixed(2)}s</strong></td>
+                        </tr>`;
+                    });
+                }
+                document.getElementById('score-table').innerHTML = scoreRows;
+            } catch(e){}
+        }, 1000);
+    </script>
+</head>
+<body>
+    <div class="container">
+        <h1 style="color: #00F5D4; margin-bottom: 5px;">🚨 ITT440 TOURNAMENT LIVE CENTRAL</h1>
+        <p style="color: #A4A4C1; margin-top: 0;">Real-time administrator monitor station. Tracks every single candidate instantaneously.</p>
+        
+        <div class="grid">
+            <div class="box">
+                <h3 style="margin-top:0; color:#00F5D4;">👥 ONLINE CANDIDATES IN-GAME</h3>
+                <table id="active-table"></table>
+            </div>
+            
+            <div class="box leaderboard">
+                <h3 style="margin-top:0; color:#FF007F;">🏆 LIVE TOURNAMENT LEADERBOARD</h3>
+                <table id="score-table"></table>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+"""
+
 @app.route('/')
 def main_index():
     return render_template_string(HTML_TEMPLATE)
+
+@app.route('/admin')
+def admin_dashboard():
+    return render_template_string(ADMIN_TEMPLATE)
+
+@app.route('/admin/data')
+def admin_data_api():
+    update_admin_tracker()
+    player_list = []
+    for uid, p in active_players.items():
+        # Live calculate running time for online active players
+        curr_time = p["elapsed_time"] if p["is_game_over"] else (time.time() - p["start_time"])
+        status_str = "Playing"
+        if p["is_game_over"]:
+            status_str = "Won" if "_" not in p["revealed_word"] else "Lost"
+            
+        player_list.append({
+            "name": p["username"],
+            "level": p["current_level"],
+            "lives": p["lives"],
+            "time": curr_time,
+            "status": status_str
+        })
+        
+    # Build complete active real-time leaderboard ranking
+    leaderboard_list = []
+    for uid, p in active_players.items():
+        curr_time = p["elapsed_time"] if p["is_game_over"] else (time.time() - p["start_time"])
+        status_str = "Playing"
+        if p["is_game_over"]:
+            status_str = "Won" if "_" not in p["revealed_word"] else "Lost"
+        
+        leaderboard_list.append({
+            "name": p["username"],
+            "time": curr_time,
+            "status": status_str,
+            "success": (p["is_game_over"] and "_" not in p["revealed_word"])
+        })
+    
+    # Sort leaderboard live: Winners first, then active players, prioritized by lowest time
+    sorted_leaderboard = sorted(leaderboard_list, key=lambda x: (-int(x["status"] == "Won"), int(x["status"] == "Playing"), x["time"]))
+
+    return jsonify({
+        "players": player_list,
+        "leaderboard": sorted_leaderboard
+    })
 
 @app.route('/start', methods=['POST'])
 def start_game():
@@ -261,19 +383,56 @@ def start_game():
     username = req.get('username', '').strip().upper()
     if not username:
         return jsonify({"status": "error"})
-    init_player_game(username)
+        
+    session["username"] = username
+    session["player_id"] = username + "_" + str(int(time.time())) # Unique signature
+    session["current_level"] = 0
+    session["secret_word"] = words_pool[0]["word"]
+    session["hint"] = words_pool[0]["hint"]
+    session["revealed_word"] = ["_" for _ in words_pool[0]["word"]]
+    session["lives"] = 6
+    session["is_game_over"] = False
+    session["start_time"] = time.time()
+    session["elapsed_time"] = 0.0
+    session["logs"] = [f"📡 Player '{username}' joined the tournament! Level 1 started."]
+    
+    # Inject record directly into global live admin dictionary tracking pool
+    active_players[session["player_id"]] = {
+        "username": username,
+        "current_level": 0,
+        "lives": 6,
+        "start_time": session["start_time"],
+        "elapsed_time": 0.0,
+        "is_game_over": False,
+        "revealed_word": session["revealed_word"],
+        "last_seen": time.time()
+    }
     return jsonify({"status": "ok"})
 
 @app.route('/update_state', methods=['GET'])
 def update_state():
-    if "username" not in session:
+    if "username" not in session or "player_id" not in session:
         return jsonify({"status": "expired"})
     
+    pid = session["player_id"]
     if not session.get("is_game_over", False):
         session["elapsed_time"] = time.time() - session["start_time"]
-            
-    # Scoreboard sorting rules: Winners first, ranked by lowest time taken (Fastest wins Rank #1)
-    sorted_leaderboard = sorted(global_leaderboard, key=lambda x: (-int(x["success"]), x["elapsed_time"]))
+    
+    # Keep heartbeat reporting tick fresh for the active admin panel
+    if pid in active_players:
+        active_players[pid]["elapsed_time"] = session["elapsed_time"]
+        active_players[pid]["last_seen"] = time.time()
+        
+    # Re-fetch ranked list for player view overlay
+    leaderboard_list = []
+    for uid, p in active_players.items():
+        curr_time = p["elapsed_time"] if p["is_game_over"] else (time.time() - p["start_time"])
+        stat = "Playing"
+        if p["is_game_over"]:
+            stat = "Won" if "_" not in p["revealed_word"] else "Lost"
+        leaderboard_list.append({"name": p["username"], "time": curr_time, "status": stat, "won": stat == "Won"})
+        
+    sorted_leaderboard = sorted(leaderboard_list, key=lambda x: (-int(x["won"]), x["status"] == "Playing", x["time"]))
     
     return jsonify({
         "revealed_word": " ".join(session["revealed_word"]),
@@ -293,6 +452,7 @@ def guess_letter():
         
     req = request.get_json() or {}
     char = req.get('letter', '').upper()
+    pid = session["player_id"]
     
     secret = session["secret_word"]
     revealed = session["revealed_word"]
@@ -310,31 +470,30 @@ def guess_letter():
         session["logs"].append(f"Wrong! Letter '{char}' is not in the word. (-1 Life)")
     
     session["revealed_word"] = revealed
+    
+    # Keep global live tracker perfectly mirrors local session modifications
+    if pid in active_players:
+        active_players[pid]["revealed_word"] = revealed
+        active_players[pid]["lives"] = session["lives"]
 
-    # Check for overall final championship win condition
     if "_" not in revealed:
         if session["current_level"] + 1 >= len(words_pool):
             session["is_game_over"] = True
             session["elapsed_time"] = time.time() - session["start_time"]
-            global_leaderboard.append({
-                "name": session["username"],
-                "elapsed_time": session["elapsed_time"],
-                "success": True
-            })
-            session["logs"].append("🎉 Victory! You have successfully completed the entire tournament!")
+            session["logs"].append("🎉 Victory! You completed the tournament!")
+            if pid in active_players:
+                active_players[pid]["is_game_over"] = True
+                active_players[pid]["elapsed_time"] = session["elapsed_time"]
         else:
             session["logs"].append("Level completed! Click 'Next Level' button.")
             
-    # Check for failure out of lives condition
     elif session["lives"] <= 0:
         session["is_game_over"] = True
         session["elapsed_time"] = time.time() - session["start_time"]
-        global_leaderboard.append({
-            "name": session["username"],
-            "elapsed_time": session["elapsed_time"],
-            "success": False
-        })
         session["logs"].append(f"💀 Game Over! The hidden word was: {secret}")
+        if pid in active_players:
+            active_players[pid]["is_game_over"] = True
+            active_players[pid]["elapsed_time"] = session["elapsed_time"]
         
     return jsonify({
         "revealed_word": " ".join(session["revealed_word"]),
@@ -344,6 +503,7 @@ def guess_letter():
 @app.route('/go_next', methods=['POST'])
 def go_next():
     if "username" in session and "_" not in session["revealed_word"]:
+        pid = session["player_id"]
         if session["current_level"] + 1 < len(words_pool):
             session["current_level"] += 1
             lvl = session["current_level"]
@@ -352,6 +512,11 @@ def go_next():
             session["revealed_word"] = ["_" for _ in words_pool[lvl]["word"]]
             session["lives"] = 6
             session["logs"].append(f"Advanced into Level {lvl + 1}!")
+            
+            if pid in active_players:
+                active_players[pid]["current_level"] = lvl
+                active_players[pid]["revealed_word"] = session["revealed_word"]
+                active_players[pid]["lives"] = 6
     return jsonify({"status": "ok"})
 
 if __name__ == '__main__':
