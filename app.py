@@ -6,7 +6,6 @@ app = Flask(__name__)
 app.secret_key = "itt440_ultimate_hangman_session_key_admin_v11"
 
 # 🎯 TOURNAMENT WORDS POOL (General & Everyday Words - No Computer Terms!)
-# The game will ALWAYS pick exactly 5 random unique words from this pool for each player.
 words_pool = [
     {"word": "CHALLENGE", "hint": "A task or situation that tests someone's abilities."},
     {"word": "JOURNEY", "hint": "An act of traveling from one place to another."},
@@ -275,6 +274,7 @@ HTML_TEMPLATE = """
 </html>
 """
 
+# 🛠️ Ditambah Baik: Ditambah Butang Reset di Bahagian Atas Kanan Panel Admin
 ADMIN_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -284,7 +284,8 @@ ADMIN_TEMPLATE = """
     <style>
         body { background-color: #0D0E15; color: #F8F8F2; font-family: 'Segoe UI', Arial, sans-serif; padding: 25px; text-align: center; }
         .container { max-width: 1000px; margin: 0 auto; }
-        .grid { display: flex; gap: 20px; margin-top: 25px; justify-content: center; flex-wrap: wrap; }
+        .header-area { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 1px solid #252538; padding-bottom: 15px; }
+        .grid { display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; }
         .box { background: #1E1E2E; border: 2px solid #00F5D4; padding: 20px; border-radius: 8px; flex: 1; min-width: 300px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
         .box.leaderboard { border-color: #FF007F; }
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
@@ -294,8 +295,21 @@ ADMIN_TEMPLATE = """
         .badge.playing { background: #00F5D4; color: #1E1E2E; }
         .badge.won { background: #FF007F; color: white; }
         .badge.lost { background: #FF477E; color: white; }
+        .btn-reset { background-color: #FF477E; color: white; border: none; padding: 12px 24px; font-weight: bold; border-radius: 6px; cursor: pointer; font-size: 1rem; transition: 0.2s; box-shadow: 0 0 10px rgba(255, 71, 126, 0.3); }
+        .btn-reset:hover { background-color: #FF007F; transform: scale(1.05); box-shadow: 0 0 15px rgba(255, 0, 127, 0.6); }
     </style>
     <script>
+        // Fungsi pencetus pemadaman global dari Admin Dashboard
+        async function clearTournamentLeaderboard() {
+            if(confirm("Adakah anda pasti mahu RESET dan padam semua markah kejohanan sekarang?")) {
+                let res = await fetch('/admin/reset', { method: 'POST' });
+                let data = await res.json();
+                if(data.status === "success") {
+                    alert("Papan markah telah berjaya dibersihkan!");
+                }
+            }
+        }
+
         setInterval(async () => {
             try {
                 let res = await fetch('/admin/data');
@@ -337,8 +351,13 @@ ADMIN_TEMPLATE = """
 </head>
 <body>
     <div class="container">
-        <h1 style="color: #00F5D4; margin-bottom: 5px;">🚨 ITT440 TOURNAMENT LIVE CENTRAL</h1>
-        <p style="color: #A4A4C1; margin-top: 0;">Preserved Leaderboard Logs. Player records will not disappear after they close the game.</p>
+        <div class="header-area">
+            <div style="text-align: left;">
+                <h1 style="color: #00F5D4; margin: 0 0 5px 0;">🚨 ITT440 TOURNAMENT LIVE CENTRAL</h1>
+                <p style="color: #A4A4C1; margin: 0;">Preserved Leaderboard Logs. Player records will not disappear after they close the game.</p>
+            </div>
+            <button class="btn-reset" onclick="clearTournamentLeaderboard()">🔄 RESET SCOREBOARD</button>
+        </div>
         
         <div class="grid">
             <div class="box">
@@ -397,6 +416,13 @@ def admin_data_api():
         "leaderboard": sorted_leaderboard
     })
 
+# 🚨 API Baharu: Membolehkan Admin mengosongkan state scoreboard kejohanan
+@app.route('/admin/reset', methods=['POST'])
+def reset_scoreboard():
+    global active_players
+    active_players.clear()  # Memadam dan membersihkan semua data sesi pemain aktif/selesai
+    return jsonify({"status": "success", "message": "All tournament scores successfully flushed."})
+
 @app.route('/start', methods=['POST'])
 def start_game():
     req = request.get_json() or {}
@@ -404,7 +430,6 @@ def start_game():
     if not username:
         return jsonify({"status": "error"})
         
-    # 🎲 Dynamically select 5 random unique questions from the pool for this specific player session
     player_words = random.sample(words_pool, 5) if len(words_pool) >= 5 else list(words_pool)
         
     session["username"] = username
@@ -517,7 +542,7 @@ def guess_letter():
         session["logs"].append(f"💀 Game Over! The hidden word was: {secret}")
         if pid in active_players:
             active_players[pid]["is_game_over"] = True
-            active_players[pid]["active_players[pid]['elapsed_time']"] = session["elapsed_time"]
+            active_players[pid]["elapsed_time"] = session["elapsed_time"]
         
     return jsonify({
         "revealed_word": " ".join(session["revealed_word"]),
