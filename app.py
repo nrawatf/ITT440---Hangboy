@@ -1,13 +1,13 @@
 from flask import Flask, render_template_string, request, jsonify, session
 import time
+import random
 
 app = Flask(__name__)
-app.secret_key = "itt440_ultimate_hangman_session_key_admin_v9"
+app.secret_key = "itt440_ultimate_hangman_session_key_admin_v11"
 
-# 🎯 Official Tournament Word Pool (English)
-# 🎯 TOURNAMENT MASTER WORD POOL (General & Everyday Words - No Computer Terms!)
-# The game will ALWAYS pick exactly 5 random words from this list for each player.
-master_words_pool = [
+# 🎯 TOURNAMENT WORDS POOL (General & Everyday Words - No Computer Terms!)
+# The game will ALWAYS pick exactly 5 random unique words from this pool for each player.
+words_pool = [
     {"word": "CHALLENGE", "hint": "A task or situation that tests someone's abilities."},
     {"word": "JOURNEY", "hint": "An act of traveling from one place to another."},
     {"word": "HORIZON", "hint": "The line at which the earth's surface and the sky appear to meet."},
@@ -111,7 +111,6 @@ HTML_TEMPLATE = """
                 document.getElementById('game-view').style.display = 'block';
                 document.getElementById('p-name').innerText = "👤 Player: " + name;
                 
-                // Fast Execution Focus Lock
                 setTimeout(() => {
                     let box = document.getElementById('letter-box');
                     if(box) { box.focus(); box.select(); }
@@ -133,7 +132,6 @@ HTML_TEMPLATE = """
             }, 100);
         }
 
-        // Real-time synchronization interval
         setInterval(async () => {
             if(!playing || fetchLock) return;
             try {
@@ -158,7 +156,7 @@ HTML_TEMPLATE = """
 
                 if(!data.revealed_word.includes('_') && data.current_level < 4) {
                     document.getElementById('next-btn').style.display = 'inline-block';
-                    document.getElementById('next-btn').focus(); // instantly focus next level button
+                    document.getElementById('next-btn').focus();
                 } else {
                     document.getElementById('next-btn').style.display = 'none';
                 }
@@ -185,7 +183,7 @@ HTML_TEMPLATE = """
             let box = document.getElementById('letter-box');
             let val = box.value.trim().toUpperCase();
             box.value = ""; 
-            box.focus(); // Instant focus retention for ultra fast typing response
+            box.focus();
             
             if(val.length === 1 && /[A-Z]/.test(val)) {
                 fetchLock = true;
@@ -201,7 +199,6 @@ HTML_TEMPLATE = """
                 drawHangman(data.lives);
                 fetchLock = false;
                 
-                // Immediately check if the level is done, if not keep input focused
                 if(data.revealed_word.includes('_')) {
                     box.focus();
                 }
@@ -213,7 +210,6 @@ HTML_TEMPLATE = """
             await fetch('/go_next', { method: 'POST' });
             document.getElementById('next-btn').style.display = 'none';
             fetchLock = false;
-            // Instantly re-focus the input box for the next level words
             setTimeout(() => {
                 let box = document.getElementById('letter-box');
                 if(box) { box.focus(); }
@@ -225,7 +221,7 @@ HTML_TEMPLATE = """
 
     <div id="auth-view" class="auth-box">
         <h2 style="color: #FF007F; margin-top: 0; font-size: 1.6rem;">🎯 ITT440 HANGBOY TOURNAMENT</h2>
-        <p style="font-size: 0.95rem; color: #A4A4C1;">Press **ENTER** or click Submit for rapid action responses.</p>
+        <p style="font-size: 0.95rem; color: #A4A4C1;">5 Levels chosen completely at random per candidate. Zero duplication!</p>
         <input type="text" id="name-in" class="letter-in" style="width: 85%; font-size: 1.3rem;" placeholder="NICKNAME" maxlength="12" onkeydown="if(event.key==='Enter') joinLobby()">
         <br>
         <button class="btn btn-join" onclick="joinLobby()">START TOURNAMENT</button>
@@ -408,12 +404,18 @@ def start_game():
     if not username:
         return jsonify({"status": "error"})
         
+    # 🎲 Dynamically select 5 random unique questions from the pool for this specific player session
+    player_words = random.sample(words_pool, 5) if len(words_pool) >= 5 else list(words_pool)
+        
     session["username"] = username
     session["player_id"] = username + "_" + str(int(time.time()))
+    session["player_words_pool"] = player_words
     session["current_level"] = 0
-    session["secret_word"] = words_pool[0]["word"]
-    session["hint"] = words_pool[0]["hint"]
-    session["revealed_word"] = ["_" for _ in words_pool[0]["word"]]
+    
+    first_q = player_words[0]
+    session["secret_word"] = first_q["word"]
+    session["hint"] = first_q["hint"]
+    session["revealed_word"] = ["_" for _ in first_q["word"]]
     session["lives"] = 6
     session["is_game_over"] = False
     session["start_time"] = time.time()
@@ -478,6 +480,7 @@ def guess_letter():
     
     secret = session["secret_word"]
     revealed = session["revealed_word"]
+    player_words = session["player_words_pool"]
     
     if char in secret:
         hit = False
@@ -498,7 +501,7 @@ def guess_letter():
         active_players[pid]["lives"] = session["lives"]
 
     if "_" not in revealed:
-        if session["current_level"] + 1 >= len(words_pool):
+        if session["current_level"] + 1 >= len(player_words):
             session["is_game_over"] = True
             session["elapsed_time"] = time.time() - session["start_time"]
             session["logs"].append("🎉 Victory! You completed the tournament!")
@@ -514,7 +517,7 @@ def guess_letter():
         session["logs"].append(f"💀 Game Over! The hidden word was: {secret}")
         if pid in active_players:
             active_players[pid]["is_game_over"] = True
-            active_players[pid]["elapsed_time"] = session["elapsed_time"]
+            active_players[pid]["active_players[pid]['elapsed_time']"] = session["elapsed_time"]
         
     return jsonify({
         "revealed_word": " ".join(session["revealed_word"]),
@@ -525,12 +528,15 @@ def guess_letter():
 def go_next():
     if "username" in session and "_" not in session["revealed_word"]:
         pid = session["player_id"]
-        if session["current_level"] + 1 < len(words_pool):
+        player_words = session["player_words_pool"]
+        if session["current_level"] + 1 < len(player_words):
             session["current_level"] += 1
             lvl = session["current_level"]
-            session["secret_word"] = words_pool[lvl]["word"]
-            session["hint"] = words_pool[lvl]["hint"]
-            session["revealed_word"] = ["_" for _ in words_pool[lvl]["word"]]
+            
+            next_q = player_words[lvl]
+            session["secret_word"] = next_q["word"]
+            session["hint"] = next_q["hint"]
+            session["revealed_word"] = ["_" for _ in next_q["word"]]
             session["lives"] = 6
             session["logs"].append(f"Advanced into Level {lvl + 1}!")
             
