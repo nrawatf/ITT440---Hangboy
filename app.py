@@ -5,12 +5,24 @@ app = Flask(__name__)
 app.secret_key = "itt440_ultimate_hangman_session_key_admin_v9"
 
 # 🎯 Official Tournament Word Pool (English)
-words_pool = [
+# 🎯 TOURNAMENT MASTER WORD POOL (General & Everyday Words - No Computer Terms!)
+# The game will ALWAYS pick exactly 5 random words from this list for each player.
+master_words_pool = [
     {"word": "CHALLENGE", "hint": "A task or situation that tests someone's abilities."},
     {"word": "JOURNEY", "hint": "An act of traveling from one place to another."},
     {"word": "HORIZON", "hint": "The line at which the earth's surface and the sky appear to meet."},
     {"word": "MYSTERY", "hint": "Something that is difficult or impossible to understand or explain."},
-    {"word": "VICTORY", "hint": "An act of defeating an enemy or opponent."}
+    {"word": "VICTORY", "hint": "An act of defeating an enemy or opponent."},
+    {"word": "ADVENTURE", "hint": "An exciting or very unusual and risky experience."},
+    {"word": "CHAMPION", "hint": "A person who has defeated all rivals in a competition."},
+    {"word": "FESTIVAL", "hint": "A day or period of celebration, typically a religious or cultural one."},
+    {"word": "HARMONY", "hint": "The combination of simultaneously sounded musical notes to produce a pleasing effect."},
+    {"word": "KINGDOM", "hint": "A country, state, or territory ruled by a king or queen."},
+    {"word": "PARADISE", "hint": "An ideal or idyllic place or state of supreme happiness."},
+    {"word": "WONDERFUL", "hint": "Inspiring delight, pleasure, or admiration; extremely good."},
+    {"word": "MARATHON", "hint": "A long-distance running race, strictly one of 26 miles."},
+    {"word": "TREASURE", "hint": "A quantity of precious metals, gems, or other valuable objects."},
+    {"word": "SATELLITE", "hint": "An artificial body placed in orbit round the earth or another planet."}
 ]
 
 # Shared Global State for Central Administrator Tracking
